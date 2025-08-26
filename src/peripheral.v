@@ -1,14 +1,11 @@
 /*
- * Copyright (c) 2025 Your Name
+ * Copyright (c) 2025 Darryl L. Miles
  * SPDX-License-Identifier: Apache-2.0
  */
 
 `default_nettype none
 
-// Change the name of this module to something that reflects its functionality and includes your name for uniqueness
-// For example tqvp_yourname_spi for an SPI peripheral.
-// Then edit tt_wrapper.v line 41 and change tqvp_example to your chosen module name.
-module tqvp_example (
+module tqvp_dlmiles_i2cmaster (
     input         clk,          // Clock - the TinyQV project clock is normally set to 64MHz.
     input         rst_n,        // Reset_n - low to reset.
 

@@ -86,6 +86,9 @@ module spi_reg #(
   logic sample_addr;
   logic sample_data;
 
+  // General counter
+  logic [5:0] buffer_counter;
+
   // Next state logic
   always_comb begin
     // default assignments

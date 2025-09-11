@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2025 Michael Bell
+ * Copyright (c) 2025 Darryl L. Miles
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -20,8 +21,8 @@
 //    enough unused signals and space to a more direct access in standalone).
 //`define DIRECT_TEST_IFACE 1
 
-/** TinyQV peripheral test using SPI */
-module tt_um_tqv_peripheral_harness (
+/** TinyQV peripheral harness test using SPI */
+module tt_um_dlmiles_tqvph_i2c (
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
     input  wire [7:0] uio_in,   // IOs: Input path
@@ -82,7 +83,7 @@ module tt_um_tqv_peripheral_harness (
   wire [7:0] uo_out_dut;
   // The peripheral under test.
   // **** Change the module name from tqvp_example to match your peripheral. ****
-  tqvp_dlmiles_i2cmaster user_peripheral_dlmiles_i2cmaster(
+  tqvp_dlmiles_i2c_top user_peripheral_dlmiles_i2c(
     .clk(clk),
     .rst_n(rst_reg_n),
     .ui_in(ui_in_signal),
@@ -179,9 +180,9 @@ module tt_um_tqv_peripheral_harness (
   assign uio_oe_spislv[1] = 1;
 
   // tie unused
-  assign uio_out_spislv[7:4] = 3'b0;
+  assign uio_out_spislv[7:4] = 0;
   assign uio_out_spislv[2] = 0;
-  assign uio_oe_spislv[7:4] = 3'b0;
+  assign uio_oe_spislv[7:4] = 0;
   assign uio_oe_spislv[2] = 0;
 `endif
 
@@ -237,6 +238,6 @@ module tt_um_tqv_peripheral_harness (
 `endif
 
   // Ignore unused inputs
-  wire _unused = &{ena, uio_in[7:0], ui_in[7:0], 1'b0};
+  wire _unused = &{uio_in[7:0], ui_in[7:0], ena, 1'b0};
 
 endmodule

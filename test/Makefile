@@ -5,13 +5,20 @@
 SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = peripheral.v
+#PROJECT_SOURCES =	peripheral.v
+PROJECT_SOURCES +=	tqvp_dlmiles_i2c_fifo.v \
+			tqvp_dlmiles_i2c_fsm.v \
+			tqvp_dlmiles_i2c_io.v \
+			tqvp_dlmiles_i2c_interr.v \
+			tqvp_dlmiles_i2c_timer.v \
+			tqvp_dlmiles_i2c_top.v
 ADDITIONAL_SOURCES = tt_wrapper.v test_harness/*.sv
 
 ifneq ($(GATES),yes)
 
 # RTL simulation:
 SIM_BUILD				= sim_build/rtl
+COMPILE_ARGS    += -DSIM
 VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
 VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(ADDITIONAL_SOURCES))
 

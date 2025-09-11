@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module tqvp_dlmiles_i2cmaster (
+module tqvp_dlmiles_i2c_top_wrapper (
     input         clk,          // Clock - the TinyQV project clock is normally set to 64MHz.
     input         rst_n,        // Reset_n - low to reset.
 
@@ -28,6 +28,7 @@ module tqvp_dlmiles_i2cmaster (
     output        user_interrupt  // Dedicated interrupt request for this peripheral
 );
 
+`ifdef EXAMPLE
     // Implement a 32-bit read/write register at address 0
     reg [31:0] example_data;
     always @(posedge clk) begin
@@ -79,5 +80,26 @@ module tqvp_dlmiles_i2cmaster (
     // data_read_n is unused as none of our behaviour depends on whether
     // registers are being read.
     wire _unused = &{data_read_n, 1'b0};
+`else
+    tqvp_dlmiles_i2c_top tqvp_dlmiles_i2c_top(
+        .clk            (clk),
+        .rst_n          (rst_n),
+
+        .ui_in          (ui_in),
+
+        .uo_out         (uo_out),
+
+        .address        (address),
+        .data_in        (data_in),
+
+        .data_write_n   (data_write_n),
+        .data_read_n    (data_read_n),
+
+        .data_out       (data_out),
+        .data_ready     (data_ready),
+
+        .user_interrupt (user_interrupt)
+    );
+`endif
 
 endmodule

@@ -5,12 +5,22 @@
    that can be driven / tested by the cocotb test.py.
 */
 module tb ();
+`ifndef SYNTHESIS
+    reg [(8*32)-1:0] DEBUG;
+    reg DEBUG_wire;
+`endif
 
   // Dump the signals to a VCD file. You can view it with gtkwave or surfer.
   initial begin
     $dumpfile("tb.vcd");
     $dumpvars(0, tb);
+`ifdef TIMING
     #1;
+`endif
+`ifndef SYNTHESIS
+    DEBUG = {8'h44, 8'h45, 8'h42, 8'h55, 8'h47, {27{8'h20}}}; // "DEBUG        "
+    DEBUG_wire = 0;
+`endif
   end
 
   // Wire up the inputs and outputs:
@@ -27,7 +37,7 @@ module tb ();
   wire VGND = 1'b0;
 `endif
 
-  tt_um_tqv_peripheral_harness test_harness (
+  tt_um_dlmiles_tqvph_i2c test_harness (
 
       // Include power ports for the Gate Level test:
 `ifdef GL_TEST

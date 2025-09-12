@@ -166,7 +166,9 @@ module tqvp_dlmiles_i2c_top (
         // strobes that latch error condx
         .stb_error_i        ({i2c_error_timeout,i2c_error_io,i2c_error_generic}),
 
+        /* verilator lint_off PINCONNECTEMPTY */
         .interrupt_raw_o    (/*nc*/),
+        /* verilator lint_on PINCONNECTEMPTY */
 
         // interrupt output line
         .interrupt_o        (interrupt)
@@ -200,7 +202,7 @@ module tqvp_dlmiles_i2c_top (
     wire [11:0] reg_data_w;
     assign reg_data_w[11:0] = data_in[11:0];
 
-    wire  [8:0] i2c_txd_data;	// 9but MSB is direction see DIR_TXD/DIR_RXD
+    wire  [8:0] i2c_txd_data;	// 9bit MSB is direction see DIR_TXD/DIR_RXD
     wire        i2c_txd_valid;
     wire        i2c_txd_ready;
 
@@ -215,7 +217,9 @@ module tqvp_dlmiles_i2c_top (
         .rst_rx_n_i             (rst_n && ~(reg_stat_write & data_in[STAT0_RX_EMPTY])),
 
         .reg_data_recv_o        (reg_data_recv), // 9bits MSB is inverted reg_data_recv_valid_o
+        /* verilator lint_off PINCONNECTEMPTY */
         .reg_data_recv_valid_o  (/*nc*/),
+        /* verilator lint_on PINCONNECTEMPTY */
         .stb_data_recv_ready_i  (reg_data_read),
 
         .reg_data_send_i        (reg_data_w),

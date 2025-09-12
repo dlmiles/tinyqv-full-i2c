@@ -19,7 +19,7 @@
 `define SPI_SLAVE_IFACE 1
 // This is a more direct signal testing interface (in my case there are
 //    enough unused signals and space to a more direct access in standalone).
-//`define DIRECT_TEST_IFACE 1
+`define DIRECT_TEST_IFACE 1
 
 /** TinyQV peripheral harness test using SPI */
 module tt_um_dlmiles_tqvph_i2c (
@@ -63,9 +63,9 @@ module tt_um_dlmiles_tqvph_i2c (
   localparam MODE_READ  = 2'b01;
   localparam MODE_WRITE = 2'b10;
 
-  localparam UI_IN_ADDR = 0;  // 2bit ADDRESS (LSB)
-  localparam UI_IN_MODE = 2;  // 2bit MODE (LSB)
-  localparam UO_OUT_INTR = 0; // INTERRUPT (also UART TXD for TinyQV)
+  localparam UI_IN0_ADDR = 0;  // 2bit ADDRESS (LSB)
+  localparam UI_IN2_MODE = 2;  // 2bit MODE (LSB)
+  localparam UO_OUT0_INTR = 0; // INTERRUPT (also UART TXD for TinyQV)
 
   `ifdef SPI_SLAVE_IFACE
     // Only if both interfaces are built into hardware do we need this extra logic
@@ -73,8 +73,8 @@ module tt_um_dlmiles_tqvph_i2c (
     always @(posedge clk) begin
       if (!rst_reg_n) begin
         // Synchronous sample, while under reset, so:
-        // rst_n=0; ui_in[UI_IN_MODE]=?; clk=~clk; clk=~clk; clk=~clk; clk=~clk; rst_n=1;
-        regtestmux <= ui_in_signal[UI_IN_MODE]; // use LSB of this setting
+        // rst_n=0; ui_in[UI_IN2_MODE]=?; clk=~clk; clk=~clk; clk=~clk; clk=~clk; rst_n=1;
+        regtestmux <= ui_in_signal[UI_IN2_MODE]; // use LSB of this setting
       end
     end
   `endif
@@ -136,9 +136,9 @@ module tt_um_dlmiles_tqvph_i2c (
     .spi_miso(spi_miso),
     .spi_clk(spi_clk_sync),
     .spi_cs_n(spi_cs_n_sync),
-    .reg_addr(address), // address_spislv
+    .reg_addr(address_spislv),
     .reg_data_i(data_out_masked),
-    .reg_data_o(data_in), // data_in_spislv
+    .reg_data_o(data_in_spislv),
     .reg_addr_v(addr_valid),
     .reg_data_i_dv(data_ready),
     .reg_data_o_dv(data_valid),
@@ -171,6 +171,7 @@ module tt_um_dlmiles_tqvph_i2c (
   wire [7:0] uio_oe_spislv;
   wire [7:0] uio_out_spislv;
   wire [7:0] uo_out_spislv;
+  assign uo_out_spislv[7:0] = uo_out_dut[7:0];
 
   assign uio_out_spislv[3] = spi_miso;
   assign uio_oe_spislv[3] = 1;
@@ -194,15 +195,15 @@ module tt_um_dlmiles_tqvph_i2c (
   wire  [1:0] data_read_n_test;
   wire  [5:0] address_test;
   wire [31:0] data_in_test;
-  assign address_test[5:0]        = {2'b0,ui_in_signal[UI_IN_ADDR +: 2],2'b0};
+  assign address_test[5:0]        = {2'b0,ui_in_signal[UI_IN0_ADDR +: 2],2'b0};
   assign data_in_test[31:0]       = {24'b0,uio_in[7:0]};
-  assign data_write_n_test        = !(ui_in_signal[UI_IN_MODE +: 2] == MODE_WRITE);
-  assign data_read_n_test         = !(ui_in_signal[UI_IN_MODE +: 2] == MODE_READ);
-  assign uio_oe_test[7:0]         = (ui_in_signal[UI_IN_MODE +: 2] == MODE_READ) ? 8'hff : 8'h00;
+  assign data_write_n_test        = !(ui_in_signal[UI_IN2_MODE +: 2] == MODE_WRITE);
+  assign data_read_n_test         = !(ui_in_signal[UI_IN2_MODE +: 2] == MODE_READ);
+  assign uio_oe_test[7:0]         = (ui_in_signal[UI_IN2_MODE +: 2] == MODE_READ) ? 8'hff : 8'h00;
   assign uio_out_test[7:0]        = data_out[7:0]; // ignores top 24bit MSB
   // vvv MUST BE CHECKED AND FIXED UP MANUALLY
   assign uo_out_test[7:1]         = uo_out_dut[7:1];
-  assign uo_out_test[UO_OUT_INTR] = user_interrupt;  // SPI uses uio_out[0] we use uo_out[0] which is also UART TXD
+  assign uo_out_test[UO_OUT0_INTR] = user_interrupt;  // SPI uses uio_out[0] we use uo_out[0] which is also UART TXD
 `endif
 
 // Wire the outputs based on the ifdefs
@@ -215,7 +216,7 @@ module tt_um_dlmiles_tqvph_i2c (
     assign data_in[31:0] = (regtestmux) ? data_in_test[31:0] : data_in_spislv[31:0];
     assign uio_oe[7:0]   = (regtestmux) ? uio_oe_test[7:0]   : uio_oe_spislv[7:0];
     assign uio_out[7:0]  = (regtestmux) ? uio_out_test[7:0]  : uio_out_spislv[7:0];
-    assign uo_out[7:0]   = (regtestmux) ? uo_out_test[7:0]   : uo_out_dut[7:0];
+    assign uo_out[7:0]   = (regtestmux) ? uo_out_test[7:0]   : uo_out_spislv[7:0];
   `else
     // Just DIRECT_TEST_IFACE
     assign data_write_n  = data_write_n_test;
@@ -230,11 +231,11 @@ module tt_um_dlmiles_tqvph_i2c (
   // Just SPI_SLAVE_IFACE
   assign data_write_n  = data_write_n_spislv;
   assign data_read_n   = data_read_n_spislv;
-  //assign address[5:0]  = address_spislv[5:0];
-  //assign data_in[31:0] = data_in_spislv[31:0];
+  assign address[5:0]  = address_spislv[5:0];
+  assign data_in[31:0] = data_in_spislv[31:0];
   assign uio_oe[7:0]   = uio_oe_spislv[7:0];
   assign uio_out[7:0]  = uio_out_spislv[7:0];
-  assign uo_out[7:0]   = uo_out_dut[7:0];
+  assign uo_out[7:0]   = uo_out_spislv[7:0];
 `endif
 
   // Ignore unused inputs

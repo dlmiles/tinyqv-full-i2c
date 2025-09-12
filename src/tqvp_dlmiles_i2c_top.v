@@ -84,6 +84,7 @@ module tqvp_dlmiles_i2c_top (
 
     // Timer unit
     wire timer_reset;
+    wire timer_run;
     wire tick_first;
     wire tick_edgewait;
     wire tick_prewait;
@@ -103,7 +104,7 @@ module tqvp_dlmiles_i2c_top (
         .clk                        (clk),
         .rst_n                      (rst_n & ~timer_reset),
 
-        .timer_run_i                (fsm_run),
+        .timer_run_i                (timer_run),
 
         .reg_conf_i                 (reg_conf),
 
@@ -270,7 +271,8 @@ module tqvp_dlmiles_i2c_top (
         .scl_idle_monitor_strobe_i  (scl_idle_monitor_strobe),
         .scl_idle_monitor_notidle_i (scl_idle_monitor_notidle),
 
-        .stb_timer_reset_o          (timer_reset),
+        .timer_reset_o              (timer_reset),
+        .timer_run_o                (timer_run),
 
         .stb_data_read_i            (reg_data_read),
 

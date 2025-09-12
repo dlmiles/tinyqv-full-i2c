@@ -216,14 +216,49 @@ async def reg_read32(tqv, addr: int) -> int:
     return value
 
 
+def compute_xmask(v):
+    if v is None:
+        return value
+    if type(v) is int:
+        return value
+    if type(v) is BinaryValue:
+        biti = 0
+        res = 0
+        s = v.binstr
+        for i in range(0, v.n_bits+1):
+            if s[biti] == 'x':
+                m = 1 << biti
+                res |= m
+            biti += 1
+        nv = BinaryValue(s, n_bits=v.n_bits)
+        println(f"v={v} nv={nv} s={s}")
+        return nv
+    raise Exception(f"compute_xmask(v={v}) [{type(v)}] ERROR unexpected type")
+
+
+def replace_xmask(v, xmask: int, with_val: int):
+    if v is None and (xmask is None or xmask == 0):
+        return None
+    # FIXME make this work with BinaryValue
+    assert type(v) is int, f"unexpected type {type(v)} need int"
+    v = v & ~xmask
+    return v
+
+
 async def reg_read32_and_check(tqv, addr: int, expect: int, andmask: int = ~0, can_raise: bool = True) -> bool:
     # all registers only use bottom 12bit, top bits must always be zero
     assert (expect & ~0xfff) == 0, f"expect=0x{expect:x} out-of-range"
     andmask |= ~0xfff # high bit should be zero
     value = await reg_read32(tqv, addr)
-    bf = (value & andmask) == expect
+    #xmask = compute_xmask(value)
+    #if (xmask & andmask) != 0:
+    #    # resolve X (if in mask, need to raise)
+    #    raise Exception(f"")
+    #value = replace_xmask(value, xmask, '0') # otherwise replace with 0
+    mvalue = value & andmask
+    bf = mvalue == expect
     if not bf and can_raise:
-        raise Exception(f"reg_read32_and_check(addr={reg_to_string(addr)}, expect=0x{expect:03x}, andmask=0x{andmask & 0xffffffff:03x}) = 0x{value:03x} 0b{value:012b} [actual] (failed)")
+        raise Exception(f"reg_read32_and_check(addr={reg_to_string(addr)}, expect=0x{expect:03x}, andmask=0x{andmask & 0xffffffff:03x}) = 0x{value:03x} 0b{value:012b} [actual] ([masked] 0x{mvalue:03x} != 0x{expect:03x} [expect])")
     return bf
 
 
@@ -408,7 +443,7 @@ async def test_project(dut):
     await tqv.write_word_reg(ADR02_CTRL, CTRL_FSM_RESET) # FSM_RESET command
     await ClockCycles(dut.clk, CLOCKS_PER_SCL)
 
-    await reg_stat_check(tqv, expect=STAT_TX_EMPTY, andmask=STAT_TX_EMPTY|STAT_TXE_OVERRUN)
+    await reg_stat_check(tqv, expect=STAT_TX_EMPTY, andmask=STAT_TXE_OVERRUN|STAT_TX_FULL|STAT_TX_EMPTY)
 
     # 10bit address example (can push both bytes into FIFO)
     #  or it could be 7bit address, then command byte, before byte receive
@@ -453,6 +488,34 @@ async def test_project(dut):
     ## FIXME recover after user_interrupt
 
     ##assert dut.uo_out.value == 70
+    debug(dut, '199 IDLE')
+    for i in range(0, 8):
+        await ClockCycles(dut.clk, CLOCKS_PER_SCL)
+
+    ###############################################################################
+    # Test TXE_OVERRUN (and recovery)
+    debug(dut, '200 TXE_OVERRUN')
+    signal = cocotbutil.design_element(dut, 'test_harness.user_peripheral_dlmiles_i2c.tqvp_dlmiles_i2c_fifo.RX_FIFO_DEPTH')
+    RX_FIFO_DEPTH = signal.value if signal is not None else None
+    dut._log.info(f"RX_FIFO_DEPTH={RX_FIFO_DEPTH} [{type(RX_FIFO_DEPTH)}]")
+    assert type(RX_FIFO_DEPTH) is not None
+    await tqv.write_word_reg(ADR02_CTRL, CTRL_FSM_RESET) # FSM_RESET command (does not empty)
+    await tqv.write_word_reg(ADR01_STAT, STAT_TX_EMPTY) # TX_EMPTY command
+    await reg_stat_check(tqv, expect=STAT_TX_EMPTY, andmask=STAT_TX_EMPTY)
+    for i in range(1, RX_FIFO_DEPTH+1):
+        e = STAT_TX_EMPTY if i == 1 else 0
+        #e |= STAT_TX_FULL if i == RX_FIFO_DEPTH else 0
+        #dut._log.info(f"i={i} e=0x{e:03x}")
+        await reg_stat_check(tqv, expect=e, andmask=STAT_TXE_OVERRUN|STAT_TX_FULL|STAT_TX_EMPTY)
+        await tqv.write_word_reg(ADR00_DATA, i)
+    debug(dut, '201 TXE_OVERRUN')
+    await reg_stat_check(tqv, expect=STAT_TX_FULL, andmask=STAT_TXE_OVERRUN|STAT_TX_FULL|STAT_TX_EMPTY)
+
+    debug(dut, '202 IDLE')
+    await tqv.write_word_reg(ADR01_STAT, STAT_TX_EMPTY) # TX_EMPTY command
+    await reg_stat_check(tqv, expect=STAT_TX_EMPTY, andmask=STAT_TX_EMPTY)
+
+    debug(dut, '299 IDLE')
     for i in range(0, 8):
         await ClockCycles(dut.clk, CLOCKS_PER_SCL)
 

@@ -39,7 +39,8 @@ module tqvp_dlmiles_i2c_fsm (
     input           scl_idle_monitor_strobe_i,
     input           scl_idle_monitor_notidle_i,
 
-    output          stb_timer_reset_o,
+    output          timer_reset_o,
+    output          timer_run_o,
 
     output          i2c_acknack_o,
     output          i2c_acknack_valid_o,
@@ -69,7 +70,7 @@ module tqvp_dlmiles_i2c_fsm (
 
     reg   [3:0] fsm_state;
     /* verilator lint_off UNUSEDSIGNAL */
-    reg   [3:0] fsm_next_state; // FIXME verification assert, 1 clock delay of w_stb_timer_reset_o
+    reg   [3:0] fsm_next_state; // FIXME verification assert, 1 clock delay of w_timer_reset_o
     /* verilator lint_on  UNUSEDSIGNAL */
 `ifdef SIM
     reg   [3:0] fsm_last_state;
@@ -238,38 +239,45 @@ module tqvp_dlmiles_i2c_fsm (
 
     reg   [3:0] w_fsm_next_state;       // wire
     //initial assert($width(w_fsm_next_state) == $width(fsm_state));
-    reg         w_stb_timer_reset_o;    // wire
+    reg         w_timer_reset_o;    // wire
     /* verilator lint_off UNUSEDSIGNAL */
-    reg         r_stb_timer_reset_o;    // FIXME verification assert, 1 clock delay of w_stb_timer_reset_o
+    reg         r_timer_reset_o;    // FIXME verification assert, 1 clock delay of w_timer_reset_o
     /* verilator lint_on UNUSEDSIGNAL */
-    assign stb_timer_reset_o = w_stb_timer_reset_o;
+    assign timer_reset_o = w_timer_reset_o;
+    reg          w_timer_run;
+    assign timer_run_o = w_timer_run;
 
     always @(*) begin
-        w_stb_timer_reset_o = 1'b0;
+        w_timer_reset_o = 1'b0;
         w_fsm_next_state = fsm_state;
+        w_timer_run = 1'b0;
         if (!rst_n) begin
-            w_stb_timer_reset_o = 1'b0;
+            w_timer_reset_o = 1'b1;
             w_fsm_next_state = ST_RESET;
         end else if (stb_ctrl_write_i) begin
+            // This is so it doesn't miss a tick (inbound strobe) during other kinds of IO access
+            // Which at the moment stops the FSM for a single cycle per write access
+            w_timer_run = 1'b0;
             if (fsm_reset) begin
                 w_fsm_next_state = ST_RESET;
             end
         end else if (fsm_run) begin
+            w_timer_run = 1'b1;
             case (fsm_state)
                 ST_RESET: begin
-                    w_stb_timer_reset_o = 1'b1;
+                    w_timer_reset_o = 1'b1;
                     w_fsm_next_state = ST_IDLE_NEED_RESTART;
                 end
                 ST_BEFORE_RUN: begin
 //                    if (r_scl_oe) begin
-//                        w_stb_timer_reset_o = 1'b1;
+//                        w_timer_reset_o = 1'b1;
 //                        w_fsm_next_state = ST_IDLE;
 //                    end else begin
 //                        w_fsm_next_state = ST_IDLE_NEED_RESTART;
 //                    end
                 end
                 ST_IDLE_NEED_RESTART: begin
-                    w_stb_timer_reset_o = 1'b1;         // no timers are running, only line monitors
+                    w_timer_reset_o = 1'b1;         // no timers are running, only line monitors
                     if (force_stop) begin
                         w_fsm_next_state = ST_PREPARE_STOP;
                     end if (i2c_txd_valid_i || (send_start && need_start)) begin
@@ -281,18 +289,26 @@ module tqvp_dlmiles_i2c_fsm (
                     end
                 end
                 ST_IDLE: begin
+                    w_timer_reset_o = 1'b0;      // timers running
                     if (force_stop) begin
-                        w_stb_timer_reset_o = 1'b1;  // reset for next state
+                        w_timer_reset_o = 1'b1;  // reset for next state
                         w_fsm_next_state = ST_PREPARE_STOP;
-                    end else if (has_acknack) begin
-                        w_stb_timer_reset_o = 1'b1;  // reset for next state
+                    end else if (has_acknack && direction == DIR_TXD) begin
+                        w_timer_reset_o = 1'b1;  // reset for next state
                         w_fsm_next_state = ST_RECV_ACKNACK;
-                    end else if (has_moredata) begin
+                    end else if (has_acknack && direction == DIR_RXD) begin
+                        w_timer_reset_o = 1'b1;  // reset for next state
+                        w_fsm_next_state = ST_SEND_ACKNACK;
+                    end else if (has_moredata && direction == DIR_TXD) begin
                         w_fsm_next_state = ST_SEND_BIT;
-                    end else if (i2c_txd_valid_i) begin
+                    end else if (has_moredata && direction == DIR_RXD) begin
+                        w_fsm_next_state = ST_RECV_BIT;
+                    end else if (i2c_txd_valid_i && i2c_txd_data_i[8] == DIR_TXD) begin
                         w_fsm_next_state = ST_SEND_BIT;
+                    end else if (i2c_txd_valid_i && i2c_txd_data_i[8] == DIR_RXD) begin
+                        w_fsm_next_state = ST_RECV_BIT;
                     end else if (send_stop) begin
-                        w_stb_timer_reset_o = 1'b1;  // reset for next state
+                        w_timer_reset_o = 1'b1;  // reset for next state
                         w_fsm_next_state = ST_PREPARE_STOP;
                     end if (!tick_scllow_i) begin
                         /* nop */
@@ -301,9 +317,10 @@ module tqvp_dlmiles_i2c_fsm (
                     end
                 end
                 ST_WAIT_LINE_IDLE: begin
+                    w_timer_reset_o = 1'b0;      // timers running
                     if (need_start) begin
                         if (tick_idlescl_i) begin // read SCL check has been HI for timer
-                            w_stb_timer_reset_o = 1'b1; // reset for next state
+                            w_timer_reset_o = 1'b1; // reset for next state
                             w_fsm_next_state = ST_PREWAIT;
                         end
                     end else begin
@@ -311,7 +328,7 @@ module tqvp_dlmiles_i2c_fsm (
                             w_fsm_next_state = ST_RESET;
                         end else begin
                             if (tick_edgewait_i) begin
-                                w_stb_timer_reset_o = 1'b1;
+                                w_timer_reset_o = 1'b1;
                                 w_fsm_next_state = ST_IDLE;
                             end
                         end
@@ -319,7 +336,7 @@ module tqvp_dlmiles_i2c_fsm (
                 end
                 ST_PREWAIT: begin
                     if (need_start) begin
-                        w_stb_timer_reset_o = 1'b1;     // reset for next state
+                        w_timer_reset_o = 1'b1;     // reset for next state
                         w_fsm_next_state = ST_WAIT_SCL_HIGH;
                     end if (tick_prewait_i /*&& scl_i == !has_moredata*/) begin // FIXME uncomment
                         // NO TIMER RESET must run on for correct SCL_LOW period
@@ -332,20 +349,20 @@ module tqvp_dlmiles_i2c_fsm (
                 end
                 ST_WAIT_SCL_LOW: begin
                     if (tick_scllow_i) begin
-                        w_stb_timer_reset_o = 1'b1;     // reset for next state
+                        w_timer_reset_o = 1'b1;     // reset for next state
                         w_fsm_next_state = ST_WAIT_SCL_HIGH;
                     end
                 end
                 ST_WAIT_SCL_HIGH: begin
                     if (tick_sclhigh_i) begin
                         if (scl_clock_stretch) begin
-                            w_stb_timer_reset_o = 1'b1; // reset for next state
+                            w_timer_reset_o = 1'b1; // reset for next state
                             w_fsm_next_state = ST_IDLE;
                         end
                     end
                 end
                 ST_SEND_BIT: begin
-                    w_stb_timer_reset_o = 1'b1;      // reset for next state
+                    w_timer_reset_o = 1'b1;      // reset for next state
                     w_fsm_next_state = ST_PREWAIT;
                 end
                 ST_RECV_ACKNACK: begin
@@ -354,7 +371,7 @@ module tqvp_dlmiles_i2c_fsm (
                     if (tick_prewait_i) begin
                     end
                     if (tick_scllow_i) begin
-                        w_stb_timer_reset_o = 1'b1;     // reset for next state
+                        w_timer_reset_o = 1'b1;     // reset for next state
                         w_fsm_next_state = ST_WAIT_ACKNACK;
                     end
                 end
@@ -363,13 +380,13 @@ module tqvp_dlmiles_i2c_fsm (
                     end
                     if (tick_sclhigh_i) begin // tick_sclhigh_i must latch
                         if (scl_clock_stretch_acknack) begin
-                            w_stb_timer_reset_o = 1'b1; // reset for next state
+                            w_timer_reset_o = 1'b1; // reset for next state
                             w_fsm_next_state = ST_IDLE_NEED_RESTART;
                         end
                     end
                 end
                 ST_RECV_BIT: begin
-                    w_stb_timer_reset_o = 1'b1;      // reset for next state
+                    w_timer_reset_o = 1'b1;      // reset for next state
                     w_fsm_next_state = ST_WAIT_SCL_LOW;
                 end
                 ST_SEND_ACKNACK: begin
@@ -380,23 +397,23 @@ module tqvp_dlmiles_i2c_fsm (
                         if (r_scl_o || !r_scl_oe) begin
                         end
                         if (tick_prewait_i) begin
-                            w_stb_timer_reset_o = 1'b1;  // reset for iteration of next state
+                            w_timer_reset_o = 1'b1;  // reset for iteration of next state
                             w_fsm_next_state = ST_SEND_STOP;
                         end
                     end else begin
-                        w_stb_timer_reset_o = 1'b1;  // reset for iteration of next state
+                        w_timer_reset_o = 1'b1;  // reset for iteration of next state
                         w_fsm_next_state = ST_SEND_STOP;
                     end
                 end
                 ST_SEND_STOP: begin
                     if (tick_edgewait_i) begin
-                        w_stb_timer_reset_o = 1'b1;      // reset for next state
+                        w_timer_reset_o = 1'b1;      // reset for next state
                         w_fsm_next_state = ST_SEND_STOP_WAIT;
                     end
                 end
                 ST_SEND_STOP_WAIT: begin
                     if (tick_sclhigh_i) begin
-                        w_stb_timer_reset_o = 1'b1;     // reset for next state
+                        w_timer_reset_o = 1'b1;     // reset for next state
                         w_fsm_next_state = ST_WAIT_SCL_HIGH;
                     end
                 end
@@ -407,7 +424,7 @@ module tqvp_dlmiles_i2c_fsm (
     // FSM (this controls the logic view of SCL/SDA lines and OEs)
     always @(posedge clk) begin
         // default low precedece defaults
-        r_stb_timer_reset_o <= 1'b0;
+        r_timer_reset_o <= 1'b0;
         i2c_txd_ready_o <= 1'b0;
         fsm_state <= w_fsm_next_state;  // wire to reg
 
@@ -446,11 +463,12 @@ module tqvp_dlmiles_i2c_fsm (
             need_start     <= 1'b1;
             data[7:0]      <= 8'bxxxxxxxx;
             bit_count[3:0] <= 4'b0111;  // bit_count==0 indicates we are not sending or recving
-`ifdef SIM
-            i2c_acknack                 <= 1'bx;        // this is exposed to CPU interface so make is consistent
-`else
+// TinyQV SPI interface does not handle X data_in/data_out
+//`ifdef SIM
+//            i2c_acknack                 <= 1'bx;        // this is exposed to CPU interface so make is consistent
+//`else
             i2c_acknack                 <= 1'b0;        // LOWX
-`endif
+//`endif
             i2c_acknack_edge            <= 1'b0;        // ACK
             i2c_acknack_valid           <= 1'b0;
             i2c_clock_stretch           <= 1'b0;
@@ -458,6 +476,7 @@ module tqvp_dlmiles_i2c_fsm (
             i2c_condx_start_stop        <= 1'b0;
             scl_idle_monitor_arm_o      <= 1'b0;
             scl_idle_monitor_reset_o    <= 1'b0;
+            direction                   <= DIR_TXD;     // assume TX
 
             // controller reset stuff
             stb_i2c_error_timeout_o <= 1'b0;    // hardware reset additionally resets
@@ -470,7 +489,7 @@ module tqvp_dlmiles_i2c_fsm (
             reg_ctrl[CTRL3_STOP]       <= 1'b0; // send_stop
             reg_ctrl[CTRL4_FORCE_STOP] <= 1'b0; // force_stop
 
-            //r_stb_timer_reset_o <= 1'b1;      ST_RESET does not care for timer
+            r_timer_reset_o <= 1'b1;        // ST_RESET does not care for timer
             fsm_next_state <= ST_RESET;
 `ifdef SIM
             on_entry <= 1'b1; // VALIDATION
@@ -512,13 +531,18 @@ module tqvp_dlmiles_i2c_fsm (
                     r_sda_o    <= HIGHX;  // align with pull-up state
                     data[7:0]  <= 8'bxxxxxxxx;
                     bit_count[3:0] <= 4'b0111;  // bit_count==0 indicates we are not sending or recving
+`ifdef SIM
+                    i2c_acknack            <= 1'b0; // FIXME TinyQV does not handle X
+`else
                     i2c_acknack            <= 1'bx;
+`endif
                     i2c_acknack_valid      <= 1'b0;
                     // no i2c_acknack_edge reset here as ST_REST can occur inside transaction
                     i2c_condx_start_stop   <= 1'b0;
                     scl_idle_monitor_arm_o <= 1'b0;
+                    direction              <= DIR_TXD;  // assume TX
 
-                    r_stb_timer_reset_o <= 1'b1;
+                    r_timer_reset_o <= 1'b1;
                     fsm_next_state <= ST_IDLE_NEED_RESTART;
                 end
                 ST_BEFORE_RUN: begin
@@ -531,7 +555,7 @@ module tqvp_dlmiles_i2c_fsm (
 //                        assert(isvalid1(r_scl_o));
 //                        assert(isvalid1(r_sda_o));
 //`endif
-//                        r_stb_timer_reset_o <= 1'b1;
+//                        r_timer_reset_o <= 1'b1;
 //                        fsm_next_state <= ST_IDLE;
 //                    end else begin
 //`ifndef SYNTHESIS_OPENLANE
@@ -550,7 +574,7 @@ module tqvp_dlmiles_i2c_fsm (
                     assert(r_sda_o === HIGHX);
                     //if ($isunknown(r_sda_o)) $info("ST_IDLE_NEED_RESTART r_sda_o=%b (HIGHX=%b)", r_sda_o, HIGHX); // DEBUG
 `endif
-                    r_stb_timer_reset_o <= 1'b1;        // no timers are running, only line monitors
+                    r_timer_reset_o <= 1'b1;        // no timers are running, only line monitors
                     if (force_stop) begin
                         // already sets all output signals
                         fsm_next_state <= ST_PREPARE_STOP;
@@ -574,24 +598,32 @@ module tqvp_dlmiles_i2c_fsm (
 `endif
                     assert(r_scl_oe);
                     assert(r_scl_o);            // HIGH
-                    assert(r_sda_oe);
+                    assert(r_sda_oe == ~direction);
                     assert(isvalid1(r_sda_o));
                     //if ($isunknown(r_sda_o)) $info("ST_IDLE r_sda_o=%b", r_sda_o); // DEBUG
                     assert(!need_start);        // indicates controller has line acquisition
 `endif
                     // FIXME work through these to see which need a timer reset
                     if (force_stop) begin
-                        r_stb_timer_reset_o <= 1'b1;  // reset for next state
+                        r_timer_reset_o <= 1'b1;  // reset for next state
                         fsm_next_state <= ST_PREPARE_STOP;
-                    end else if (has_acknack) begin
+                    end else if (has_acknack && direction == DIR_TXD) begin
                         r_scl_o <= 1'b0;
 `ifndef SYNTHESIS_OPENLANE
                         assert($isunknown(data[7]));
 `endif
-                        r_stb_timer_reset_o <= 1'b1;  // reset for next state
+                        r_timer_reset_o <= 1'b1;  // reset for next state
                         fsm_next_state <= ST_RECV_ACKNACK;
-                    end else if (has_moredata) begin    // sending
+                    end else if (has_acknack && direction == DIR_RXD) begin
+                        r_scl_o <= 1'b0;
+                        r_timer_reset_o <= 1'b1;  // reset for next state
+                        fsm_next_state <= ST_SEND_ACKNACK;
+                    end else if (has_moredata && direction == DIR_TXD) begin    // sending
+                        assert(r_sda_oe);
                         fsm_next_state <= ST_SEND_BIT;
+                    end else if (has_moredata && direction == DIR_RXD) begin    // sending
+                        assert(!r_sda_oe);
+                        fsm_next_state <= ST_RECV_BIT;
                     end else if (i2c_txd_valid_i && i2c_txd_data_i[8] == DIR_TXD) begin
 `ifndef SYNTHESIS_OPENLANE
                         assert(isvalid9(i2c_txd_data_i));       // all bits valid
@@ -612,9 +644,10 @@ module tqvp_dlmiles_i2c_fsm (
                         // i2c_txd_data_i[3]  FIXME TODO send_stop (after this byte)
                         //i2c_txd_ready_o <= 1'b1;      // strobe as we load  FIXME move to strobe FIFO after recvd
                         direction <= i2c_txd_data_i[8];
+                        r_sda_oe <= 1'b0;
                         fsm_next_state <= ST_RECV_BIT;
                     end else if (send_stop) begin
-                        r_stb_timer_reset_o <= 1'b1;  // reset for next state
+                        r_timer_reset_o <= 1'b1;  // reset for next state
                         fsm_next_state <= ST_PREPARE_STOP;
                     end if (!tick_scllow_i) begin       // TIMER !tick_scllow_i overhang ? before release
                         /* nop */
@@ -647,7 +680,7 @@ module tqvp_dlmiles_i2c_fsm (
                         assert(need_start);     // FIXME to remove
 `endif
                         if (tick_idlescl_i) begin // read SCL check has been HI for timer
-                            r_stb_timer_reset_o <= 1'b1;        // reset for next state
+                            r_timer_reset_o <= 1'b1;        // reset for next state
                             r_scl_oe <= 1'b1;   // time to drive (r_scl_o==1)
                             r_scl_o  <= 1'b1;   // mimic pull-up
                             r_sda_oe <= 1'b1;   // START condition SDA negedge
@@ -666,7 +699,7 @@ module tqvp_dlmiles_i2c_fsm (
                             fsm_next_state <= ST_RESET;
                         end else begin
                             if (tick_edgewait_i) begin
-                                r_stb_timer_reset_o <= 1'b1;
+                                r_timer_reset_o <= 1'b1;
                                 fsm_next_state <= ST_IDLE;
                             end
                         end
@@ -687,9 +720,9 @@ module tqvp_dlmiles_i2c_fsm (
                         i2c_clock_stretch           <= 1'b0;
                         i2c_clock_stretch_acknack   <= 1'b0;
                         r_sda_o <= 1'b0;        // START condx
-                        r_stb_timer_reset_o <= 1'b1;    // reset for next state
+                        r_timer_reset_o <= 1'b1;    // reset for next state
                         fsm_next_state <= ST_WAIT_SCL_HIGH;
-                    end if (tick_prewait_i /*&& scl_i == !has_moredata*/) begin // FIXME uncomment
+                    end if (tick_prewait_i && direction == DIR_TXD /*&& scl_i == !has_moredata*/) begin // FIXME uncomment
 `ifndef SYNTHESIS_OPENLANE
                         assert(isvalid1(data[7]));
 `endif
@@ -715,12 +748,12 @@ module tqvp_dlmiles_i2c_fsm (
 `endif
                     assert(r_scl_oe == 1'b1);
                     assert(r_scl_o  == 1'b0);   // LOW
-                    assert(r_sda_oe == 1'b1);
+                    assert(r_sda_oe == ~direction);   // 1=TX 0=RX
                     assert(isvalid1(r_sda_o));  // any state
 `endif
                     if (tick_scllow_i) begin
                         r_scl_o <= 1'b1;        // RISE
-                        r_stb_timer_reset_o <= 1'b1;    // reset for next state
+                        r_timer_reset_o <= 1'b1;    // reset for next state
                         fsm_next_state <= ST_WAIT_SCL_HIGH;
                     end
                 end
@@ -731,23 +764,31 @@ module tqvp_dlmiles_i2c_fsm (
 `endif
                     assert(r_scl_oe == 1'b1);
                     assert(r_scl_o  == 1'b1);   // HIGH after START or BITS
-                    assert(r_sda_oe == 1'b1);
+                    assert(r_sda_oe == ~direction);   // 1=TX 0=RX
                     assert(isvalid1(r_sda_o));  // any state
 `endif
                     // FIXME The I2C specification allows an infinite timeout here but we are currently limited to tick_overflow_i
                     //  tick_sclhigh_i is latching so we could inhibit tick_overflow_i processing and we should confirm to spec ?
                     if (tick_sclhigh_i) begin
-                        if (scl_clock_stretch) begin    // CLOCK STRETCH (we need to see the scl_i==1 to continue)
-                            i2c_acknack_edge <= 1'b0;   // RESET for new transaction
-                            need_start <= 1'b0;
-                            r_stb_timer_reset_o <= 1'b1;        // reset for next state
-                            fsm_next_state <= ST_IDLE;
-                        end else begin
-                            i2c_clock_stretch <= 1'b1;
+                        if (direction == DIR_TXD) begin
+                            if (scl_clock_stretch) begin    // CLOCK STRETCH (we need to see the scl_i==1 to continue)
+                                i2c_acknack_edge <= 1'b0;   // RESET for new transaction
+                                need_start <= 1'b0;
+                                r_timer_reset_o <= 1'b1;        // reset for next state
+                                fsm_next_state <= ST_IDLE;
+                            end else begin
+                                i2c_clock_stretch <= 1'b1;
 `ifndef SYNTHESIS_OPENLANE
-                            // Hmm the verilator used in flow, or flow itself does not handle $info FIXME remove ifndef
-//                            $info("I2C ST_WAIT_SCL_HIGH CLOCK_STRETCH tick_sclhigh_i=%b scl_i=%b sda_i=%b", tick_sclhigh_i, scl_i, sda_i);
+                                // Hmm the verilator used in flow, or flow itself does not handle $info FIXME remove ifndef
+//                                $info("I2C ST_WAIT_SCL_HIGH CLOCK_STRETCH tick_sclhigh_i=%b scl_i=%b sda_i=%b", tick_sclhigh_i, scl_i, sda_i);
 `endif
+                            end
+                        end if (direction == DIR_RXD) begin
+                            // FIXME this is the wrong sampel point, for RXD it is end of SCL_HIGH
+                            data[7] <= sda_i;
+                            data[6:0] <= {data[5:0], data[7]};
+                            bit_count <= bit_count - 4'd1;
+                            fsm_next_state <= ST_IDLE;
                         end
                     end
                 end
@@ -764,7 +805,7 @@ module tqvp_dlmiles_i2c_fsm (
 `ifndef SYNTHESIS_OPENLANE
                     assert(isvalid1(data[7]));  // the bit we're about to emit
 `endif
-                    r_stb_timer_reset_o <= 1'b1;        // reset for next state
+                    r_timer_reset_o <= 1'b1;        // reset for next state
                     fsm_next_state <= ST_PREWAIT;       // data[7] is the next bit to send
                 end
                 ST_RECV_ACKNACK: begin
@@ -803,7 +844,7 @@ module tqvp_dlmiles_i2c_fsm (
                         assert(!r_sda_oe);
 `endif
                         r_scl_o  <= HIGHX;      // RISE
-                        r_stb_timer_reset_o <= 1'b1;    // reset for next state
+                        r_timer_reset_o <= 1'b1;    // reset for next state
                         fsm_next_state <= ST_WAIT_ACKNACK;
                     end
                 end
@@ -841,7 +882,7 @@ module tqvp_dlmiles_i2c_fsm (
                                 i2c_acknack_edge <= sda_i;  // only stores NACKs
                             i2c_acknack <= sda_i;           // FIXME emit/make-available this as data for CPU
                             i2c_acknack_valid <= 1'b1;      // FIXME process latching NACK
-                            r_stb_timer_reset_o <= 1'b1;    // reset for next state
+                            r_timer_reset_o <= 1'b1;    // reset for next state
                             //r_scl_oe <= 1'b1;         // no need to delay this
                             //r_sda_oe <= 1'b1;         // FIXME maybe this should be delayed ?
                             //bit_count <= 4'b0111;     // has_moredata=0 has_acknack=0
@@ -871,7 +912,7 @@ module tqvp_dlmiles_i2c_fsm (
                     assert(isvalid4(bit_count) && (/*bit_count >= 4'd0 &&*/ bit_count <= 4'd7)); // bit_count unsigned so >=0 always true
 `endif
                     r_scl_o <= 1'b0;            // FALL
-                    r_stb_timer_reset_o <= 1'b1;      // reset for next state
+                    r_timer_reset_o <= 1'b1;      // reset for next state
                     fsm_next_state <= ST_WAIT_SCL_LOW;
                 end
                 ST_SEND_ACKNACK: begin
@@ -894,7 +935,7 @@ module tqvp_dlmiles_i2c_fsm (
                         if (tick_prewait_i) begin
                             r_sda_o  <= 1'b0;           // SDA FALL while SCL low is not a STOP condx
                             r_sda_oe <= 1'b1;
-                            r_stb_timer_reset_o <= 1'b1;  // reset for iteration of next state
+                            r_timer_reset_o <= 1'b1;  // reset for iteration of next state
                             fsm_next_state <= ST_SEND_STOP;
                         end
                     end else begin
@@ -902,7 +943,7 @@ module tqvp_dlmiles_i2c_fsm (
                         assert(!r_scl_o);
                         assert(r_scl_oe);
 `endif
-                        r_stb_timer_reset_o <= 1'b1;  // reset for iteration of next state
+                        r_timer_reset_o <= 1'b1;  // reset for iteration of next state
                         fsm_next_state <= ST_SEND_STOP;
                     end
                 end
@@ -929,7 +970,7 @@ module tqvp_dlmiles_i2c_fsm (
                     r_sda_o  <= 1'b0;
                     if (tick_edgewait_i) begin  // is this delay needed ?
                         r_sda_o  <= 1'b0;
-                        r_stb_timer_reset_o <= 1'b1;      // reset for next state
+                        r_timer_reset_o <= 1'b1;      // reset for next state
                         fsm_next_state <= ST_SEND_STOP_WAIT;
                     end
                 end
@@ -949,7 +990,7 @@ module tqvp_dlmiles_i2c_fsm (
                         reg_ctrl[CTRL3_STOP]       <= 1'b0; // send_stop
                         reg_ctrl[CTRL4_FORCE_STOP] <= 1'b0; // force_stop
                         i2c_condx_start_stop       <= 1'b1;
-                        r_stb_timer_reset_o <= 1'b1;    // reset for next state
+                        r_timer_reset_o <= 1'b1;    // reset for next state
                         // ideally want ST_WAIT_SCL_HIGH but with tick_scllow_i timer
                         fsm_next_state <= ST_WAIT_SCL_HIGH;     // HOLD:STOP before ST_RESET ?
                     end
@@ -990,7 +1031,7 @@ module tqvp_dlmiles_i2c_fsm (
         case (fsm_state)
             ST_RESET :              w_fsm_state_2bit = FSM_ST_IDLE;
             ST_IDLE_NEED_RESTART :  w_fsm_state_2bit = FSM_ST_IDLE;
-            ST_IDLE :               w_fsm_state_2bit = FSM_ST_IDLE;
+            //ST_IDLE :               w_fsm_state_2bit = FSM_ST_IDLE;
             ST_WAIT_LINE_IDLE :     w_fsm_state_2bit = FSM_ST_IDLE;
             //ST_PREWAIT :
             //ST_WAIT_SCL_LOW :

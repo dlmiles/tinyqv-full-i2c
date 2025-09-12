@@ -5,6 +5,8 @@
 
 `default_nettype none
 
+`include "global.vh"
+
 // Manage the mapping of MUXed IO options
 module tqvp_dlmiles_i2c_io (
     input  [11:0]  reg_cmux,
@@ -42,7 +44,7 @@ module tqvp_dlmiles_i2c_io (
 
 `ifdef NOT_SUPPORTED_BY_IVERILOG // easier to read verilog at top, is unsupported by IVERILOG
     always_comb begin
-        case (reg_cmux[1:0])	 // SCL input source
+        case (reg_cmux[1:0])     // SCL input source
         2'b00: scl_i = ui_in[0]; // GPIO09 I2C0 SCL
         2'b01: scl_i = ui_in[2]; // GPIO11 I2C1 SCL
         2'b10: scl_i = ui_in[4]; // GPIO17 I2C0 SCL
@@ -52,10 +54,10 @@ module tqvp_dlmiles_i2c_io (
 `else
     // same as above but using IVERLOG support expressions
     assign scl_i = (reg_cmux[1]) ? // SCL input source
-        ((reg_cmux[0]) ?	(ui_in[6]) :	// 2'b11 // GPIO19 I2C1 SCL
-                                (ui_in[4])) :	// 2'b10 // GPIO17 I2C0 SCL
-        ((reg_cmux[0]) ?	(ui_in[2]) :	// 2'b01 // GPIO11 I2C1 SCL
-                                (ui_in[0]));	// 2'b00 // GPIO09 I2C0 SCL
+        ((reg_cmux[0]) ?        (ui_in[6]) :    // 2'b11 // GPIO19 I2C1 SCL
+                                (ui_in[4])) :   // 2'b10 // GPIO17 I2C0 SCL
+        ((reg_cmux[0]) ?        (ui_in[2]) :    // 2'b01 // GPIO11 I2C1 SCL
+                                (ui_in[0]));    // 2'b00 // GPIO09 I2C0 SCL
 `endif
 
 `ifdef NOT_SUPPORTED_BY_IVERILOG // easier to read verilog at top, is unsupported by IVERILOG
@@ -70,10 +72,10 @@ module tqvp_dlmiles_i2c_io (
 `else
     // same as above but using IVERLOG support expressions
     assign sda_i = (reg_cmux[3]) ? // SDA input source
-        ((reg_cmux[2]) ?	(ui_in[1]) :	// 2'b11 // GPIO10 I2C1 SDA
-                                (ui_in[3])) :	// 2'b10 // GPIO12 I2C0 SDA
-        ((reg_cmux[2]) ?	(ui_in[5]) :	// 2'b01 // GPIO18 I2C1 SDA
-                                (ui_in[7]));	// 2'b00 // GPIO20 I2C0 SDA
+        ((reg_cmux[2]) ?        (ui_in[1]) :    // 2'b11 // GPIO10 I2C1 SDA
+                                (ui_in[3])) :   // 2'b10 // GPIO12 I2C0 SDA
+        ((reg_cmux[2]) ?        (ui_in[5]) :    // 2'b01 // GPIO18 I2C1 SDA
+                                (ui_in[7]));    // 2'b00 // GPIO20 I2C0 SDA
 `endif
 
     wire scl_o_direct;
@@ -93,38 +95,38 @@ module tqvp_dlmiles_i2c_io (
 
     wire [7:0] i2c0and1_without_oe;
     assign i2c0and1_without_oe = {
-        sda_o_signal,	// out[7] GPIO16 I2C0 SDA
-        scl_o_signal,	// out[6] GPIO15 I2C1 SCL
-        sda_o_signal,	// out[5] GPIO14 I2C1 SDA
-        scl_o_signal,	// out[4] GPIO13 I2C0 SCL
-        sda_o_signal,	// out[3] GPIO08 I2C0 SDA
-        scl_o_signal,	// out[2] GPIO07 I2C1 SCL
-        sda_o_signal,	// out[1] GPIO06 I2C1 SDA
-        scl_o_signal	// out[0] GPIO05 I2C0 SCL
+        sda_o_signal,   // out[7] GPIO16 I2C0 SDA
+        scl_o_signal,   // out[6] GPIO15 I2C1 SCL
+        sda_o_signal,   // out[5] GPIO14 I2C1 SDA
+        scl_o_signal,   // out[4] GPIO13 I2C0 SCL
+        sda_o_signal,   // out[3] GPIO08 I2C0 SDA
+        scl_o_signal,   // out[2] GPIO07 I2C1 SCL
+        sda_o_signal,   // out[1] GPIO06 I2C1 SDA
+        scl_o_signal    // out[0] GPIO05 I2C0 SCL
     };
 
     wire [7:0] i2c0_with_oe;
     assign i2c0_with_oe = {
-        sda_o_signal,	// out[7] GPIO16 I2C0 SDA
-        scl_oe_signal,	// out[6] GPIO15
-        sda_oe_signal,	// out[5] GPIO14
-        scl_o_signal,	// out[4] GPIO13 I2C0 SCL
-        sda_o_signal,	// out[3] GPIO08 I2C0 SDA
-        scl_oe_signal,	// out[2] GPIO07
-        sda_oe_signal,	// out[1] GPIO06
-        scl_o_signal	// out[0] GPIO05 I2C0 SCL
+        sda_o_signal,   // out[7] GPIO16 I2C0 SDA
+        scl_oe_signal,  // out[6] GPIO15
+        sda_oe_signal,  // out[5] GPIO14
+        scl_o_signal,   // out[4] GPIO13 I2C0 SCL
+        sda_o_signal,   // out[3] GPIO08 I2C0 SDA
+        scl_oe_signal,  // out[2] GPIO07
+        sda_oe_signal,  // out[1] GPIO06
+        scl_o_signal    // out[0] GPIO05 I2C0 SCL
     };
 
     wire [7:0] i2c1_with_oe;
     assign i2c1_with_oe = {
-        sda_oe_signal,	// out[7] GPIO16
-        scl_o_signal,	// out[6] GPIO15 I2C1 SCL
-        sda_o_signal,	// out[5] GPIO14 I2C1 SDA
-        scl_oe_signal,	// out[4] GPIO13 
-        sda_oe_signal,	// out[3] GPIO08
-        scl_o_signal,	// out[2] GPIO07 I2C1 SCL
-        sda_o_signal,	// out[1] GPIO06 I2C1 SDA
-        scl_oe_signal	// out[0] GPIO05 
+        sda_oe_signal,  // out[7] GPIO16
+        scl_o_signal,   // out[6] GPIO15 I2C1 SCL
+        sda_o_signal,   // out[5] GPIO14 I2C1 SDA
+        scl_oe_signal,  // out[4] GPIO13
+        sda_oe_signal,  // out[3] GPIO08
+        scl_o_signal,   // out[2] GPIO07 I2C1 SCL
+        sda_o_signal,   // out[1] GPIO06 I2C1 SDA
+        scl_oe_signal   // out[0] GPIO05
     };
 
 `ifdef NOT_SUPPORTED_BY_IVERILOG
@@ -138,10 +140,10 @@ module tqvp_dlmiles_i2c_io (
     end
 `else
     assign uo_out[7:0] = (reg_cmux[5]) ? // uo_out mapping
-        ((reg_cmux[4]) ?    (i2c1_with_oe[7:0]) : 		// 2'b11
-                            (i2c0_with_oe[7:0])) :		// 2'b10
-        ((reg_cmux[4]) ?    (i2c0and1_without_oe[7:0]) :	// 2'b01
-                            (i2c0and1_without_oe[7:0]));	// 2'b00
+        ((reg_cmux[4]) ?    (i2c1_with_oe[7:0]) :          // 2'b11
+                            (i2c0_with_oe[7:0])) :         // 2'b10
+        ((reg_cmux[4]) ?    (i2c0and1_without_oe[7:0]) :   // 2'b01
+                            (i2c0and1_without_oe[7:0]));   // 2'b00
 `endif
 
 endmodule

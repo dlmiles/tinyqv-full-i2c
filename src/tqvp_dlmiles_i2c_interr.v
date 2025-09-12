@@ -5,13 +5,15 @@
 
 `default_nettype none
 
+`include "global.vh"
+
 // Interrupt / Error state unit
 module tqvp_dlmiles_i2c_interr (
     input           clk,            // Clock - the TinyQV project clock is normally set to 64MHz.
     input           rst_n,          // Reset_n - low to reset.
 
     input           reg_stat_i,     // write data
-    input           stb_stat_i,	    // write txn
+    input           stb_stat_i,     // write txn
 
     output [5:0]    reg_stat_o,     // TIMEOUT, IO, GENERIC, INTR_RAW, INTR_EN, INTR_EDGE
 
@@ -46,7 +48,7 @@ module tqvp_dlmiles_i2c_interr (
     end
 
     assign reg_stat_o = {
-      r_err[2:0],	// TIMEOUT, IO, GENERIC
+      r_err[2:0],       // TIMEOUT, IO, GENERIC
       intr_raw,
 
       r_intr_en,

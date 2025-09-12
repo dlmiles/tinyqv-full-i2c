@@ -8,7 +8,8 @@ from cocotb.triggers import ClockCycles
 from tqv import TinyQV
 
 from cocotb_stuff import *
-from cocotb_stuff.cocotbutil import *
+from cocotb_stuff.cocotbutil import debug
+import cocotb_stuff.cocotbutil as cocotbutil
 
 
 # When submitting your design, change this to the peripheral number
@@ -29,6 +30,25 @@ FAST = 10
 FASTPLUS = 4
 
 CLOCKS_PER_SCL = STANDARD * TICKS
+
+# REG_CTRL
+CTRL_FSM_START      = 0x001
+CTRL_FSM_RUN        = CTRL_FSM_START # same bit0
+CTRL_FSM_STOP       = 0x002
+CTRL_FSM_RESET      = 0x003
+
+STAT_ERR_TIMEOUT    = 0x800
+STAT_ERR_IO         = 0x400
+STAT_ERR_GENERIC    = 0x200
+STAT_INTR_RAW       = 0x100
+STAT_INTR_EN        = 0x080
+STAT_INTR_EDGE      = 0x040
+STAT_TXE_OVERRUN    = 0x020
+STAT_TX_FULL        = 0x010
+STAT_TX_EMPTY       = 0x008
+STAT_RXE_OVERRUN    = 0x004
+STAT_RX_FULL        = 0x002
+STAT_RX_EMPTY       = 0x001
 
 class Accessor():
     def __init__(self, dut, scl_id: int, sda_id: int, scl_oe_id: int = None, sda_oe_id: int = None, scl_i_id: int = None, sda_i_id: int = None):
@@ -174,6 +194,65 @@ class LoopbackTask():
         return cocotb.create_task(self.loopback_coroutine())
 
 
+def reg_to_string(addr: int) -> str:
+    if addr == ADR00_DATA:
+        return "ADR00_DATA"
+    if addr == ADR01_STAT:
+        return "ADR01_STAT"
+    if addr == ADR02_CTRL:
+        return "ADR02_CTRL"
+    if addr == ADR03_CONF:
+        return "ADR03_CONF"
+    if addr == ADR04_CMUX:
+        return "ADR04_CMUX"
+    return None
+
+
+async def reg_read32(tqv, addr: int) -> int:
+    assert (addr >= ADR00_DATA and addr <= ADR04_CMUX), f"address=0x{address:03x}"
+    assert (addr & 0x003) == 0, f"address=0x{address:03x} is not 32bit aligned address"
+    assert type(tqv) is TinyQV, f"reg_read32(tqv={type(tqv)}, ...) wrong type for argument, MAYBE YOU USED dut AND NOT tqv"
+    value = await tqv.read_word_reg(addr)
+    return value
+
+
+async def reg_read32_and_check(tqv, addr: int, expect: int, andmask: int = ~0, can_raise: bool = True) -> bool:
+    # all registers only use bottom 12bit, top bits must always be zero
+    assert (expect & ~0xfff) == 0, f"expect=0x{expect:x} out-of-range"
+    andmask |= ~0xfff # high bit should be zero
+    value = await reg_read32(tqv, addr)
+    bf = (value & andmask) == expect
+    if not bf and can_raise:
+        raise Exception(f"reg_read32_and_check(addr={reg_to_string(addr)}, expect=0x{expect:03x}, andmask=0x{andmask & 0xffffffff:03x}) = 0x{value:03x} 0b{value:012b} [actual] (failed)")
+    return bf
+
+
+async def reg_data_check(tqv, expect: int, andmask: int = ~0, can_raise: bool = True) -> bool:
+    # REG_DATA bottom 12bit are in use, top bits must always be zero
+    return await reg_read32_and_check(tqv, ADR00_DATA, expect, andmask, can_raise)
+
+
+async def reg_stat_check(tqv, expect: int, andmask: int = ~0, can_raise: bool = True) -> bool:
+    # REG_STAT bottom 12bit are in use, top bits must always be zero
+    return await reg_read32_and_check(tqv, ADR01_STAT, expect, andmask, can_raise)
+
+
+async def reg_ctrl_check(tqv, expect: int, andmask: int = ~0, can_raise: bool = True) -> bool:
+    # REG_CTRL bottom 12bit are in use, top bits must always be zero
+    return await reg_read32_and_check(tqv, ADR02_CTRL, expect, andmask, can_raise)
+
+
+async def user_interrupt_check(dut, expect: bool, can_raise: bool = True) -> bool:
+    assert type(dut) is not TinyQV, f"reg_read32(dut={type(dut)}, ...) wrong type for argument, MAYBE YOU USED tqv AND NOT dut"
+    signal_path = "test_harness.user_interrupt"
+    s = cocotbutil.design_element(dut, signal_path)
+    if s is None:
+        return None
+    bf = s.value == expect
+    if not bf and can_raise:
+        raise Exception(f"user_interrupt_check(expect=0x{expect:x}) = 0x{bf:x} [actual] (failed)")
+    return bf
+
 
 @cocotb.test()
 async def test_project(dut):
@@ -219,7 +298,7 @@ async def test_project(dut):
     await ClockCycles(dut.clk, 2)
 
     debug(dut, '004 CTRL')
-    await tqv.write_word_reg(ADR02_CTRL, 0x00000003)    # FSM_RESET
+    await tqv.write_word_reg(ADR02_CTRL, CTRL_FSM_RESET)    # FSM_RESET command
     await ClockCycles(dut.clk, 2)
 
     debug(dut, '005 CMUX')
@@ -274,7 +353,7 @@ async def test_project(dut):
     await ClockCycles(dut.clk, 2)
 
     debug(dut, '008 FSM_RUN 0xa5')
-    await tqv.write_word_reg(ADR02_CTRL, 0x00000001)	# FSM_RUN
+    await tqv.write_word_reg(ADR02_CTRL, CTRL_FSM_RUN)	# FSM_RUN
 
     for i in range(0, 12):
         await ClockCycles(dut.clk, CLOCKS_PER_SCL)
@@ -301,15 +380,66 @@ async def test_project(dut):
     await tqv.write_word_reg(ADR02_CTRL, 0x08)	# SEND_STOP
     await ClockCycles(dut.clk, 2)
 
-    for i in range(0, 8):
+    for i in range(0, 9):
         await ClockCycles(dut.clk, CLOCKS_PER_SCL)
 
-    for i in range(0, 8*4):
+    debug(dut, '013 DONE')
+
+    ### FIXME check expected states, interrupts, etc...
+
+    debug(dut, '014 FSM_STOP')
+    await tqv.write_word_reg(ADR02_CTRL, CTRL_FSM_STOP)	# FSM_STOP
+
+    ## check FSM_RUN status
+    await reg_ctrl_check(tqv, expect=0x000, andmask=CTRL_FSM_RUN) # FSM_RUNNING==0
+
+    debug(dut, '015 IDLE')
+    ### FIXME check expected states, interrupts, etc...
+
+    ## check interrupt status (FIXME this should work!)
+    await reg_stat_check(tqv, expect=STAT_INTR_EN, andmask=STAT_INTR_RAW|STAT_INTR_EN|STAT_INTR_EDGE) # FSM_RUNNING==0
+    ## check interrupt signal
+    await user_interrupt_check(dut, expect=0)
+
+    for i in range(0, 4):
         await ClockCycles(dut.clk, CLOCKS_PER_SCL)
 
-    ### Send byte, Recv byte
 
-    ### FIXME user_interrupt
+    await tqv.write_word_reg(ADR02_CTRL, CTRL_FSM_RESET) # FSM_RESET command
+    await ClockCycles(dut.clk, CLOCKS_PER_SCL)
+
+    await reg_stat_check(tqv, expect=STAT_TX_EMPTY, andmask=STAT_TX_EMPTY|STAT_TXE_OVERRUN)
+
+    # 10bit address example (can push both bytes into FIFO)
+    #  or it could be 7bit address, then command byte, before byte receive
+    debug(dut, '100 SEND 0x11') # 8'b1111010R  MAGIC=11110 A9=1 A8=0 RW=0 (read)
+    await tqv.write_word_reg(ADR00_DATA, 0x011)
+
+    #
+    await reg_stat_check(tqv, expect=0, andmask=STAT_TX_EMPTY)
+
+    debug(dut, '101 SEND 0x08') # 8'b00001000  A7..A0=8
+    await tqv.write_word_reg(ADR00_DATA, 0x008)
+
+    debug(dut, '102 RECV')
+    # FIXME add NEED_STOP bit here
+    await tqv.write_word_reg(ADR00_DATA, 0x100) # RECV+NEED_STOP
+
+    # check no TXE_OVERRUN
+    await reg_stat_check(tqv, expect=0, andmask=STAT_TXE_OVERRUN)
+
+    await tqv.write_word_reg(ADR02_CTRL, CTRL_FSM_RUN) # FSM_RUN command
+    for i in range(0, 9*3):	# data+acknack
+        await ClockCycles(dut.clk, CLOCKS_PER_SCL)
+    for i in range(0, 4):	# stop
+        await ClockCycles(dut.clk, CLOCKS_PER_SCL)
+
+    await reg_ctrl_check(tqv, expect=CTRL_FSM_RUN, andmask=CTRL_FSM_RUN) # FSM_RUNNING
+
+    await tqv.write_word_reg(ADR02_CTRL, CTRL_FSM_STOP) # FSM_STOP command
+
+    await reg_ctrl_check(tqv, expect=0x000, andmask=CTRL_FSM_RUN) # !FSM_RUNNING
+
 
     ## wait for SDA_OE to appear
     ## check SDA==1
@@ -323,6 +453,15 @@ async def test_project(dut):
     ## FIXME recover after user_interrupt
 
     ##assert dut.uo_out.value == 70
+    for i in range(0, 8):
+        await ClockCycles(dut.clk, CLOCKS_PER_SCL)
+
+    ## FSM_RESET
+    ## TXE_OVERRUN==0
+    ## TXE_OVERRUN (cause with FIFO overrun)
+    ## TXE_OVERRUN==1
+    ## FSM_RESET
+    ## TXE_OVERRUN==0
 
     debug(dut, '800 INTR')
     # Test the interrupt, generated when ui_in[6] goes high
@@ -337,11 +476,11 @@ async def test_project(dut):
     # Interrupt doesn't clear
     await ClockCycles(dut.clk, 10)
     ##assert await tqv.is_interrupt_asserted()
-    
+
     # Write bottom bit of address 8 high to clear
     await tqv.write_byte_reg(8, 1)
     ##assert not await tqv.is_interrupt_asserted()
 
     debug(dut, '999')
-    await ClockCycles(dut.clk, 10)
+    await ClockCycles(dut.clk, 100)
 

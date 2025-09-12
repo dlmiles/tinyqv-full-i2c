@@ -5,6 +5,8 @@
 
 `default_nettype none
 
+`include "global.vh"
+
 module tqvp_dlmiles_i2c_top (
     input         clk,          // Clock - the TinyQV project clock is normally set to 64MHz.
     input         rst_n,        // Reset_n - low to reset.
@@ -29,22 +31,15 @@ module tqvp_dlmiles_i2c_top (
 );
 
     // 32bit word aligned, byte addressing
-    localparam ADR00_DATA = 6'b000000;  // 8bit data
-    localparam ADR01_STAT = 6'b000100;
-    localparam ADR02_CTRL = 6'b001000;
-    localparam ADR03_CONF = 6'b001100;
-    localparam ADR04_CMUX = 6'b010000;
+    localparam ADR00_DATA       = `ADR00_DATA;  // 8bit data
+    localparam ADR01_STAT       = `ADR01_STAT;
+    localparam ADR02_CTRL       = `ADR02_CTRL;
+    localparam ADR03_CONF       = `ADR03_CONF;
+    localparam ADR04_CMUX       = `ADR04_CMUX;
 
-    localparam DATA_READ_8BIT  = 2'b00;
-    localparam DATA_READ_16BIT = 2'b01;
-    localparam DATA_READ_32BIT = 2'b10;
-    localparam DATA_READ_IDLE  = 2'b11;
+    localparam DATA_READ_IDLE   = `DATA_READ_IDLE;
 
-    localparam DATA_WRITE_8BIT  = 2'b00;
-    localparam DATA_WRITE_16BIT = 2'b01;
-    localparam DATA_WRITE_32BIT = 2'b10;
-    localparam DATA_WRITE_IDLE  = 2'b11;
-
+    localparam DATA_WRITE_IDLE  = `DATA_WRITE_IDLE;
 
     wire reg_data_write;
     assign reg_data_write = (address[4:2] == ADR00_DATA[4:2]) && (data_write_n != DATA_WRITE_IDLE);
@@ -102,7 +97,7 @@ module tqvp_dlmiles_i2c_top (
     wire scl_idle_monitor_notidle;
 
     wire scl_i; // driven by tqvp_dlmiles_i2c_io
-    wire sda_i;	// driven by tqvp_dlmiles_i2c_io
+    wire sda_i; // driven by tqvp_dlmiles_i2c_io
 
     tqvp_dlmiles_i2c_timer tqvp_dlmiles_i2c_timer(
         .clk                        (clk),
@@ -145,20 +140,20 @@ module tqvp_dlmiles_i2c_top (
     wire st_int_en;
     wire st_int_edge;
 
-    wire i2c_error_timeout;	// signals from FSM to indicate error
+    wire i2c_error_timeout; // signals from FSM to indicate error
     wire i2c_error_io;
     wire i2c_error_generic;
 
     wire interrupt;
 
-    localparam STAT7_INTR_EN = 7;	// bit7
+    localparam STAT7_INTR_EN = 7; // bit7
 
     // Interrupt and Error control unit
     tqvp_dlmiles_i2c_interr tqvp_dlmiles_i2c_interr(
         .clk                (clk),
         .rst_n              (rst_n),
 
-        .reg_stat_i         (data_in[STAT7_INTR_EN]),	// INTR_EN
+        .reg_stat_i         (data_in[STAT7_INTR_EN]), // INTR_EN
         .stb_stat_i         (reg_stat_write),
 
         .reg_stat_o         ({st_err_timeout,st_err_io,st_err_generic,st_int_raw,st_int_en,st_int_edge}),
@@ -195,21 +190,21 @@ module tqvp_dlmiles_i2c_top (
         i2c_condx_start_stop,
         i2c_acknack_valid,
         i2c_acknack,
-        reg_data_recv[8],	// inverted reg_data_recv_valid
+        reg_data_recv[8],       // inverted reg_data_recv_valid
 
         reg_data_recv[7:0]
     };
     wire [11:0] reg_data_w;
     assign reg_data_w[11:0] = data_in[11:0];
 
-    wire  [8:0] i2c_txd_data;	// 9bit MSB is direction see DIR_TXD/DIR_RXD
+    wire  [8:0] i2c_txd_data;   // 9bit MSB is direction see DIR_TXD/DIR_RXD
     wire        i2c_txd_valid;
     wire        i2c_txd_ready;
 
     wire  [7:0] i2c_rxd_data;
-    assign i2c_rxd_data = 0;	// FIXME use txd_data+direction
+    assign i2c_rxd_data = 0;    // FIXME use txd_data+direction
     wire        i2c_rxd_valid;
-    assign i2c_rxd_valid = 0;	// FIXME use txd_data+direction
+    assign i2c_rxd_valid = 0;   // FIXME use txd_data+direction
 
     tqvp_dlmiles_i2c_fifo tqvp_dlmiles_i2c_fifo(
         .clk                    (clk),
@@ -304,14 +299,14 @@ module tqvp_dlmiles_i2c_top (
         st_err_generic,
         st_int_raw,
 
-        st_int_en,	// bit7 so as to be accessible from all read/write sizes
+        st_int_en,      // bit7 so as to be accessible from all read/write sizes
         st_int_edge,
-        st_tx_overrun,	// CPU side error
-        st_tx_full,	// most interested in full
+        st_tx_overrun,  // CPU side error
+        st_tx_full,     // most interested in full
         st_tx_empty,
-        st_rx_overrun,	// CPU too slow to service
-        st_rx_full,	// less interested in !full
-        st_rx_empty	// most interested in !empty
+        st_rx_overrun,  // CPU too slow to service
+        st_rx_full,     // less interested in !full
+        st_rx_empty     // most interested in !empty
     };
 
     wire scl_i_raw;
@@ -323,17 +318,17 @@ module tqvp_dlmiles_i2c_top (
 
         .reg_cmux   (reg_cmux[11:0]),   // Control MUX reg
 
-        .ui_in      (ui_in[7:0]),	//i
-        .uo_out     (uo_out[7:0]),	//o
+        .ui_in      (ui_in[7:0]),       //i
+        .uo_out     (uo_out[7:0]),      //o
 
-        // external view nomenclature	//verilog signal direction
-        .scl_i      (scl_i_raw),	//o
-        .scl_o      (scl_o),		//i
-        .scl_oe     (scl_oe),		//i
+        // external view nomenclature   //verilog signal direction
+        .scl_i      (scl_i_raw),        //o
+        .scl_o      (scl_o),            //i
+        .scl_oe     (scl_oe),           //i
 
-        .sda_i      (sda_i_raw),	//o
-        .sda_o      (sda_o),		//i
-        .sda_oe     (sda_oe)		//i
+        .sda_i      (sda_i_raw),        //o
+        .sda_o      (sda_o),            //i
+        .sda_oe     (sda_oe)            //i
     );
 
     synchronizer #(.STAGES(2), .WIDTH(1)) synchronizer_scl_i_inst (.clk(clk), .data_in(scl_i_raw), .data_out(scl_i));
@@ -363,7 +358,7 @@ module tqvp_dlmiles_i2c_top (
         ))));
 `endif
 
-    assign data_ready = 1'b1;	// always ready no delay
+    assign data_ready = 1'b1;   // always ready no delay
 
     assign user_interrupt = interrupt;
 

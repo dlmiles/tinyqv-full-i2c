@@ -6,6 +6,8 @@
 
 `default_nettype none
 
+`include "global.vh"
+
 `define UI_IN_SYNCHRONIZER 1
 // Unclear what benefit 2 stage (the template default) brings,
 //   the signal are externally driven as sync to (sent with) clock.
@@ -195,11 +197,11 @@ module tt_um_dlmiles_tqvph_i2c (
   wire  [1:0] data_read_n_test;
   wire  [5:0] address_test;
   wire [31:0] data_in_test;
-  assign address_test[5:0]        = {2'b0,ui_in_signal[UI_IN0_ADDR +: 2],2'b0};
+  assign address_test[5:0]        = {1'b0,ui_in_signal[UI_IN0_ADDR +: 3],2'b0};
   assign data_in_test[31:0]       = {24'b0,uio_in[7:0]};
-  assign data_write_n_test        = !(ui_in_signal[UI_IN2_MODE +: 2] == MODE_WRITE);
-  assign data_read_n_test         = !(ui_in_signal[UI_IN2_MODE +: 2] == MODE_READ);
-  assign uio_oe_test[7:0]         = (ui_in_signal[UI_IN2_MODE +: 2] == MODE_READ) ? 8'hff : 8'h00;
+  assign data_write_n_test        = (ui_in_signal[UI_IN2_MODE +: 2] == MODE_WRITE) ? `DATA_WRITE_32BIT : `DATA_WRITE_IDLE;
+  assign data_read_n_test         = (ui_in_signal[UI_IN2_MODE +: 2] == MODE_READ)  ? `DATA_READ_32BIT  : `DATA_READ_IDLE;
+  assign uio_oe_test[7:0]         = (ui_in_signal[UI_IN2_MODE +: 2] == MODE_READ)  ? 8'hff : 8'h00;
   assign uio_out_test[7:0]        = data_out[7:0]; // ignores top 24bit MSB
   // vvv MUST BE CHECKED AND FIXED UP MANUALLY
   assign uo_out_test[7:1]         = uo_out_dut[7:1];

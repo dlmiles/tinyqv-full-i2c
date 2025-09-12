@@ -5,6 +5,8 @@
 
 `default_nettype none
 
+`include "global.vh"
+
 module tqvp_dlmiles_i2c_fifo (
     input           clk,          // Clock - the TinyQV project clock is normally set to 64MHz.
     input           rst_tx_n_i,   // Reset active LOW - TX side active HIGH (revoke valid, set which_r=0, which_w=0)
@@ -37,8 +39,8 @@ module tqvp_dlmiles_i2c_fifo (
     localparam RX_FIFO_COUNT_WIDTH = 2;
     localparam TX_FIFO_COUNT_WIDTH = 2;
 
-    localparam DIR_TXD = 1'b0;
-    localparam DIR_RXD = 1'b1;
+    localparam DIR_TXD = `DIR_TXD;
+    localparam DIR_RXD = `DIR_RXD;
 
 `ifndef SYNTHESIS_OPENLANE
     initial assert(RX_FIFO_DEPTH == 2 ** RX_FIFO_COUNT_WIDTH);
@@ -57,11 +59,11 @@ module tqvp_dlmiles_i2c_fifo (
     reg       [TX_FIFO_DEPTH-1:0] r_txd_valid;
     reg                     [7:0] r_txd_data [TX_FIFO_DEPTH-1:0];
     reg                     [0:0] r_txd_dir  [TX_FIFO_DEPTH-1:0];
-    reg [TX_FIFO_COUNT_WIDTH-1:0] r_txd_which_w;	// which to write
-    reg [TX_FIFO_COUNT_WIDTH-1:0] r_txd_which_r;	// which to read
+    reg [TX_FIFO_COUNT_WIDTH-1:0] r_txd_which_w;        // which to write
+    reg [TX_FIFO_COUNT_WIDTH-1:0] r_txd_which_r;        // which to read
 
     always @(posedge clk) begin
-        if (reg_data_send_valid_i) begin	// CPU to device
+        if (reg_data_send_valid_i) begin        // CPU to device
             r_txd_data [r_txd_which_w][7:0] <= reg_data_send_i[7:0];
             r_txd_dir  [r_txd_which_w][0]   <= reg_data_send_i[8];
             r_txd_valid[r_txd_which_w] <= 1'b1;
@@ -69,12 +71,12 @@ module tqvp_dlmiles_i2c_fifo (
             if (r_txd_valid[r_txd_which_w])
                 r_txe_overrun <= 1'b1;
         end
-        if (stb_data_recv_ready_i) begin	// device to CPU
+        if (stb_data_recv_ready_i) begin        // device to CPU
             // data always has current (muxed) view
             r_rxd_which_r <= r_rxd_which_r + 1'd1;
             r_rxd_valid[r_rxd_which_r] <= 1'b0;
         end
-        if (i2c_rxd_valid_i) begin	// I2C to device
+        if (i2c_rxd_valid_i) begin      // I2C to device
             r_rxd_data [r_rxd_which_w][7:0] <= i2c_rxd_data_i[7:0];
             r_rxd_valid[r_rxd_which_w] <= 1'b1;
             r_rxd_which_w <= r_rxd_which_w + 1'd1;
@@ -82,7 +84,7 @@ module tqvp_dlmiles_i2c_fifo (
                 r_rxe_overrun <= 1'b1;
             
         end
-        if (i2c_txd_ready_i) begin	// device to I2C
+        if (i2c_txd_ready_i) begin      // device to I2C
             // data always has current (muxed) view
             r_txd_which_r <= r_txd_which_r + 1'd1;
             r_txd_valid[r_txd_which_r] <= 1'b0;
@@ -110,12 +112,12 @@ module tqvp_dlmiles_i2c_fifo (
     assign i2c_txd_data_o   = {r_txd_dir[r_txd_which_r][0], r_txd_data[r_txd_which_r][7:0]};
     assign i2c_txd_valid_o  = r_txd_valid[r_txd_which_r];
 
-    assign st_tx_full_o     =  &{r_txd_valid};
-    assign st_tx_empty_o    = ~|{r_txd_valid};
+    assign st_tx_full_o     =  &{r_txd_valid}; // AND
+    assign st_tx_empty_o    = ~|{r_txd_valid}; // NOR
     assign st_tx_overrun_o  = r_txe_overrun;
 
-    assign st_rx_full_o     =  &{r_rxd_valid};
-    assign st_rx_empty_o    = ~|{r_rxd_valid};
+    assign st_rx_full_o     =  &{r_rxd_valid}; // AND
+    assign st_rx_empty_o    = ~|{r_rxd_valid}; // NOR
     assign st_rx_overrun_o  = r_rxe_overrun;
 
 endmodule

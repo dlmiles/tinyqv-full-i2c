@@ -5,6 +5,8 @@
 
 `default_nettype none
 
+`include "global.vh"
+
 module tqvp_dlmiles_i2c_timer (
     input           clk,          // Clock
     input           rst_n,        // Reset_n - low to reset
@@ -13,13 +15,13 @@ module tqvp_dlmiles_i2c_timer (
 
     input    [11:0] reg_conf_i,
 
-    output          stb_tick_first_o,		// first after reset
-    output          stb_tick_edgewait_o,	// LIMIT0
-    output          stb_tick_prewait_o,		// LIMIT1
-    output          stb_tick_sclhigh_o,		// LIMIT2
-    output          stb_tick_scllow_o,		// LIMIT3
-    output          stb_tick_idlescl_o,		// LIMIT4
-    output          stb_tick_overflow_o,	// MSB overflow
+    output          stb_tick_first_o,           // first after reset
+    output          stb_tick_edgewait_o,        // LIMIT0
+    output          stb_tick_prewait_o,         // LIMIT1
+    output          stb_tick_sclhigh_o,         // LIMIT2
+    output          stb_tick_scllow_o,          // LIMIT3
+    output          stb_tick_idlescl_o,         // LIMIT4
+    output          stb_tick_overflow_o,        // MSB overflow
 
     input           scl_idle_monitor_reset_i,
     input           scl_idle_monitor_arm_i,
@@ -53,27 +55,27 @@ module tqvp_dlmiles_i2c_timer (
         reg_conf_i[3]                  // see table in comments below (minus one)
     };
 
-    localparam CLKDIV_FASTPLUS = 9'd4 - 1;	// subtract 1 as zero based count
+    localparam CLKDIV_FASTPLUS = 9'd4 - 1;      // subtract 1 as zero based count
     localparam CLKDIV_FAST     = 9'd10 - 1;
     localparam CLKDIV_SLOW     = 9'd400 - 1;
     localparam CLKDIV_STANDARD = 9'd40 - 1;
 
     wire [8:0] clkdiv_limit;
     // 
-    assign clkdiv_limit = (reg_conf_clkdiv[1]) ?	// .............. (actual) 8 76543210    8 76543210 (minus one)
-        ((reg_conf_clkdiv[0]) ? (CLKDIV_SLOW) : 	// 2'b11 SLOW     400 = 9'b1_10010000 9'b1_10001111
-                                (CLKDIV_STANDARD)) :	// 2'b10 STANDARD  40 = 9'b0_00101000 9'b0_00100111
-        ((reg_conf_clkdiv[0]) ? (CLKDIV_FAST) :		// 2'b01 FAST      10 = 9'b0_00001010 9'b0_00001001
-                                (CLKDIV_FASTPLUS));	// 2'b00 FASTPLUS   4 = 9'b0_00000100 9'b0_00000011 // expected reset default
+    assign clkdiv_limit = (reg_conf_clkdiv[1]) ?        // .............. (actual) 8 76543210    8 76543210 (minus one)
+        ((reg_conf_clkdiv[0]) ? (CLKDIV_SLOW) :         // 2'b11 SLOW     400 = 9'b1_10010000 9'b1_10001111
+                                (CLKDIV_STANDARD)) :    // 2'b10 STANDARD  40 = 9'b0_00101000 9'b0_00100111
+        ((reg_conf_clkdiv[0]) ? (CLKDIV_FAST) :         // 2'b01 FAST      10 = 9'b0_00001010 9'b0_00001001
+                                (CLKDIV_FASTPLUS));     // 2'b00 FASTPLUS   4 = 9'b0_00000100 9'b0_00000011 // expected reset default
 
     reg  [8:0] clkdiv_count;
 `ifdef COCOTB_SIM
     // FIXME why does this not work, I'm sure it used to work
-    initial clkdiv_count = 9'b0;	// SIM only reset to known value
+    initial clkdiv_count = 9'b0;        // SIM only reset to known value
 `endif
 
 `ifndef SYNTHESIS_OPENLANE
-    //assert({9{1'b1}} > CLKDIV_SLOW);	// check counter can store largest value
+    //assert({9{1'b1}} > CLKDIV_SLOW);  // check counter can store largest value
 `endif
 
     wire clkdiv_stb;
@@ -105,6 +107,10 @@ module tqvp_dlmiles_i2c_timer (
 
     wire stb_tick_sclhigh_condx;
     assign stb_tick_sclhigh_condx  = timer_count == TIMER_LIMIT2;
+
+    wire stb_tick_overflow_condx;
+    //assign stb_tick_overflow_condx = timer_count[WIDTH-1]; // MSB set is overflow
+    assign stb_tick_overflow_condx = timer_count == TIMER_LIMIT4;
 
     // timer with strobe outputs
     always @(posedge clk) begin
@@ -138,7 +144,7 @@ module tqvp_dlmiles_i2c_timer (
             end
 
             // 
-            if (timer_count[WIDTH-1]) begin	// MSB set is overflow
+            if (stb_tick_overflow_condx) begin
                 r_tick_overflow <= 1'b1;
             end
 
@@ -157,7 +163,7 @@ module tqvp_dlmiles_i2c_timer (
     end
 
     // FIXME see if these comparisons work at smaller width (many use cases only care for the first tick since reset)
-    assign stb_tick_first_o    = /*rst_n && */r_tick_first;		// MUX bypass when reset
+    assign stb_tick_first_o    = /*rst_n && */r_tick_first;             // MUX bypass when reset
     assign stb_tick_edgewait_o = clkdiv_stb && timer_count == TIMER_LIMIT0;   // Used to drop OE by driving the edge to pull-up then disconnecting OE
     assign stb_tick_prewait_o  = clkdiv_stb && timer_count == TIMER_LIMIT1;   // START hold, STOP setup
     assign stb_tick_scllow_o   = clkdiv_stb && timer_count == TIMER_LIMIT3;

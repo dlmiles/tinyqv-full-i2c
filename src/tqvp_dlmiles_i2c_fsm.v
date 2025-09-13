@@ -619,10 +619,14 @@ module tqvp_dlmiles_i2c_fsm (
                         r_timer_reset_o <= 1'b1;  // reset for next state
                         fsm_next_state <= ST_SEND_ACKNACK;
                     end else if (has_moredata && direction == DIR_TXD) begin    // sending
+`ifndef SYNTHESIS_OPENLANE
                         assert(r_sda_oe);
+`endif
                         fsm_next_state <= ST_SEND_BIT;
                     end else if (has_moredata && direction == DIR_RXD) begin    // sending
+`ifndef SYNTHESIS_OPENLANE
                         assert(!r_sda_oe);
+`endif
                         fsm_next_state <= ST_RECV_BIT;
                     end else if (i2c_txd_valid_i && i2c_txd_data_i[8] == DIR_TXD) begin
 `ifndef SYNTHESIS_OPENLANE

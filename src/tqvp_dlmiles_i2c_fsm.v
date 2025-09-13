@@ -583,6 +583,10 @@ module tqvp_dlmiles_i2c_fsm (
                         r_scl_o <= 1'b1;                // replace X (HIGHX) with 1 (matching external pull-up)
                         r_sda_o <= 1'b1;                // replace X (HIGHX) with 1 (matching external pull-up)
 `endif
+`ifndef SYNTHESIS_OPENLANE
+                        assert(isvalid1(i2c_txd_data_i[8]));
+`endif
+                        direction <= i2c_txd_data_i[8]; // hint for RXD so SDA_OE is not set in ST_WAIT_LINE_IDLE
                         fsm_next_state <= ST_WAIT_LINE_IDLE;
                     end else if (send_stop) begin
                         // already sets all output signals
@@ -696,7 +700,8 @@ module tqvp_dlmiles_i2c_fsm (
                     end else begin
                         r_scl_oe <= 1'b1;       // replace HIGHX
                         r_scl_o  <= 1'b1;       // mimic pull-up
-                        r_sda_oe <= 1'b1;       // replace HIGHX
+                        if (direction == DIR_TXD)
+                            r_sda_oe <= 1'b1;       // replace HIGHX
                         r_sda_o  <= 1'b1;       // mimic pull-up
                         if (scl_idle_monitor_strobe_i) begin    // FIXME scl_idle_monitor_strobe
                             stb_i2c_error_io_o <= 1'b1;

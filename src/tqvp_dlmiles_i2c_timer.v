@@ -82,10 +82,12 @@ module tqvp_dlmiles_i2c_timer (
     assign clkdiv_stb = clkdiv_count == 9'b0;
 
     always @(posedge clk) begin
-        if (clkdiv_stb)
-            clkdiv_count <= clkdiv_limit;
-        else
-            clkdiv_count <= clkdiv_count - 1;
+        if (timer_run_i) begin // also power saving
+            if (clkdiv_stb)
+                clkdiv_count <= clkdiv_limit;
+            else
+                clkdiv_count <= clkdiv_count - 1;
+        end
 `ifdef COCOTB_SIM
         if (!rst_n)
             clkdiv_count <= 9'b0;

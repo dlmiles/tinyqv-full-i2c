@@ -402,7 +402,8 @@ module tqvp_dlmiles_i2c_fsm (
                     w_fsm_next_state = ST_WAIT_SCL_LOW;
                 end
                 ST_RECV_DONE: begin
-                    w_i2c_txd_ready_o = 1'b1;	// strobe
+                    if (bit_count == 4'b0)
+                        w_i2c_txd_ready_o = 1'b1;	// strobe
                     w_timer_reset_o = 1'b1;     // reset for next state
                     w_fsm_next_state = ST_IDLE;
                 end

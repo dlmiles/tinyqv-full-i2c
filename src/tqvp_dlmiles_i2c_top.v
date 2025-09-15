@@ -251,6 +251,8 @@ module tqvp_dlmiles_i2c_top (
         .reg_ctrl_i                 (reg_ctrl_w),
         .stb_ctrl_write_i           (reg_ctrl_write),
 
+        .reg_conf_i                 (reg_conf),
+
         .fsm_run_o                  (fsm_run),
         .fsm_state_o                (fsm_state),
 

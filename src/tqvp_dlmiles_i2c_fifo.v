@@ -34,10 +34,10 @@ module tqvp_dlmiles_i2c_fifo (
     output          st_rx_overrun_o
 );
 
-    localparam RX_FIFO_DEPTH = 4; // pow2
-    localparam TX_FIFO_DEPTH = 4; // pow2
-    localparam RX_FIFO_COUNT_WIDTH = 2;
-    localparam TX_FIFO_COUNT_WIDTH = 2;
+    localparam RX_FIFO_DEPTH = 8; // pow2
+    localparam TX_FIFO_DEPTH = 8; // pow2
+    localparam RX_FIFO_COUNT_WIDTH = 3;
+    localparam TX_FIFO_COUNT_WIDTH = 3;
 
     localparam DIR_TXD = `DIR_TXD;
     localparam DIR_RXD = `DIR_RXD;
@@ -91,13 +91,13 @@ module tqvp_dlmiles_i2c_fifo (
         end
         // These are at the bottom so they have the highest precedence
         if (!rst_rx_n_i) begin
-            r_rxd_valid   <= {RX_FIFO_COUNT_WIDTH{2'b0}};
+            r_rxd_valid   <= {RX_FIFO_DEPTH{1'b0}};
             r_rxe_overrun <= 1'b0;
             r_rxd_which_r <= {RX_FIFO_COUNT_WIDTH{1'd0}};
             r_rxd_which_w <= {RX_FIFO_COUNT_WIDTH{1'd0}}; //RX_FIFO_DEPTH - 1'd1; // one before write position
         end
         if (!rst_tx_n_i) begin
-            r_txd_valid   <= {TX_FIFO_COUNT_WIDTH{2'b0}};
+            r_txd_valid   <= {TX_FIFO_DEPTH{1'b0}};
             r_txe_overrun <= 1'b0;
             r_txd_which_r <= {TX_FIFO_COUNT_WIDTH{1'd0}};
             r_txd_which_w <= {TX_FIFO_COUNT_WIDTH{1'd0}}; //TX_FIFO_DEPTH - 1'b1; // one before write position

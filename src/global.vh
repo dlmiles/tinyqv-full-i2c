@@ -26,3 +26,8 @@
 
 `define DIR_TXD             (1'b0)
 `define DIR_RXD             (1'b1)
+
+
+// Bit fields
+`define CONF10_STRETCH_DATA_DISABLE     (10)
+`define CONF11_STRETCH_ACKNACK_DISABLE  (11)

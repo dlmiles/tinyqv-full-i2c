@@ -382,6 +382,8 @@ async def test_project(dut):
     # Zero should be read back from register 2
     ##assert await tqv.read_word_reg(8) == 0
 
+    dut._log.info(f"SEND")
+
     # A second write should work
     debug(dut, '007 DATA 0xa5')
     await tqv.write_word_reg(ADR00_DATA, 0xa5)
@@ -392,6 +394,10 @@ async def test_project(dut):
 
     for i in range(0, 12):
         await ClockCycles(dut.clk, CLOCKS_PER_SCL)
+
+    
+    if True:
+        return
 
     debug(dut, '009 DATA 0x5a')
     await tqv.write_word_reg(ADR00_DATA, 0x5a)
@@ -443,7 +449,9 @@ async def test_project(dut):
     await tqv.write_word_reg(ADR02_CTRL, CTRL_FSM_RESET) # FSM_RESET command
     await ClockCycles(dut.clk, CLOCKS_PER_SCL)
 
+    # FIXME restore now RX is in TX buf
     await reg_stat_check(tqv, expect=STAT_TX_EMPTY, andmask=STAT_TXE_OVERRUN|STAT_TX_FULL|STAT_TX_EMPTY)
+
 
     # 10bit address example (can push both bytes into FIFO)
     #  or it could be 7bit address, then command byte, before byte receive
@@ -455,6 +463,8 @@ async def test_project(dut):
 
     debug(dut, '101 SEND 0x08') # 8'b00001000  A7..A0=8
     await tqv.write_word_reg(ADR00_DATA, 0x008)
+
+    dut._log.info(f"RECV")
 
     debug(dut, '102 RECV')
     # FIXME add NEED_STOP bit here

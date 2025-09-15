@@ -823,11 +823,12 @@ module tqvp_dlmiles_i2c_fsm (
                             if (has_moredata) begin
                                 data[7] <= sda_i;	// RX sample point
                                 data[6:0] <= {data[5:0], data[7]};
-                                bit_count <= bit_count - 4'd1;
+                                //bit_count <= bit_count - 4'd1;
                                 r_timer_reset_o <= 1'b1;        // reset for next state
                                 fsm_next_state <= ST_RECV_DONE;
                             end else if (has_acknack) begin
                                 r_timer_reset_o <= 1'b1;        // reset for next state
+                                bit_count[3] <= 1'b0;
                                 // FIXME more here ?
                                 if (!did_stop) begin // FIXME do this better, try to remote did_stop
                                     need_start <= 1'b0;		// only when we just did stop!

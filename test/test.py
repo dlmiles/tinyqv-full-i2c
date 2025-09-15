@@ -395,10 +395,6 @@ async def test_project(dut):
     for i in range(0, 12):
         await ClockCycles(dut.clk, CLOCKS_PER_SCL)
 
-    
-    if True:
-        return
-
     debug(dut, '009 DATA 0x5a')
     await tqv.write_word_reg(ADR00_DATA, 0x5a)
     await ClockCycles(dut.clk, 2)
